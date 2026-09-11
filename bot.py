@@ -529,10 +529,10 @@ async def wrong_guess(chat_id, selected_player, context):
         text=(
             "❌ *POLICE GUESSED WRONG!*\n\n"
             f"👮 Police chose: *{selected_player['name']}*\n\n"
-            "🤣 *Abe Police ID nikamma nithalla, "
-            "police ke naam pe dhabba!* 🤣\n\n"
+            "🤣 *Abe Police ke nam me nikamma nithalla h police ke nam pe dhabba h tu, "
+            "kya police banega re apna kattu nai bacha sakta!* 🤣\n\n"
             f"🕵️ Actual Chor: *{get_name(game, chor_id)}*\n"
-            f"🆔 Chor ID: `{chor_id}`\n\n"
+            f"🆔 Chor ID: `{chor_name}`\n\n"
             "🕵️ Chor gets +2000 points!"
         ),
         parse_mode="Markdown",
