@@ -1,6 +1,11 @@
 import os
 import random
-from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
+
+from telegram import (
+    Update,
+    InlineKeyboardButton,
+    InlineKeyboardMarkup,
+)
 from telegram.ext import (
     Application,
     CommandHandler,
@@ -65,7 +70,7 @@ async def startgame(update: Update, context: ContextTypes.DEFAULT_TYPE):
     ]
 
     await update.message.reply_text(
-        "🎮 *RAJA RANI POLICE CHOR*\n\n"
+        "👑 *RAJA RANI POLICE CHOR* 👑\n\n"
         "👥 Select number of players:\n\n"
         "Minimum: 5\n"
         "Maximum: 10",
@@ -85,7 +90,11 @@ async def choose_players(update: Update, context: ContextTypes.DEFAULT_TYPE):
     chat_id = query.message.chat_id
     player_count = int(query.data.split("_")[1])
 
+    creator = query.from_user
+
     games[chat_id] = {
+        "creator_id": creator.id,
+        "creator_name": creator.full_name,
         "max_players": player_count,
         "players": [],
         "started": False,
@@ -94,6 +103,7 @@ async def choose_players(update: Update, context: ContextTypes.DEFAULT_TYPE):
         "police": None,
         "chor": None,
         "guessed": False,
+        "scores_awarded": False,
     }
 
     keyboard = [
@@ -102,14 +112,21 @@ async def choose_players(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 "🎮 JOIN GAME",
                 callback_data="join_game"
             )
-        ]
+        ],
+        [
+            InlineKeyboardButton(
+                "❌ CANCEL GAME",
+                callback_data="cancel_game"
+            )
+        ],
     ]
 
     await query.edit_message_text(
         f"🎮 *GAME LOBBY CREATED!*\n\n"
+        f"👤 Host: {creator.full_name}\n"
         f"👥 Selected players: {player_count}\n"
         f"✅ Joined: 0/{player_count}\n\n"
-        f"👇 Press the button below to join.",
+        f"👇 Press JOIN GAME to participate.",
         reply_markup=InlineKeyboardMarkup(keyboard),
         parse_mode="Markdown",
     )
@@ -154,9 +171,6 @@ async def join_game(update: Update, context: ContextTypes.DEFAULT_TYPE):
         )
         return
 
-    # Try to check whether user has started the bot.
-    # Telegram does not provide a reliable "has started" check,
-    # so we add the user and DM them during role assignment.
     game["players"].append({
         "id": user.id,
         "name": user.full_name,
@@ -167,7 +181,7 @@ async def join_game(update: Update, context: ContextTypes.DEFAULT_TYPE):
     maximum = game["max_players"]
 
     text = (
-        "🎮 *RAJA RANI POLICE CHOR*\n\n"
+        "👑 *RAJA RANI POLICE CHOR* 👑\n\n"
         f"👥 Players: {current}/{maximum}\n\n"
     )
 
@@ -185,10 +199,7 @@ async def join_game(update: Update, context: ContextTypes.DEFAULT_TYPE):
             parse_mode="Markdown",
         )
 
-        await assign_roles(
-            chat_id,
-            context,
-        )
+        await assign_roles(chat_id, context)
 
     else:
         keyboard = [
@@ -197,7 +208,13 @@ async def join_game(update: Update, context: ContextTypes.DEFAULT_TYPE):
                     "🎮 JOIN GAME",
                     callback_data="join_game"
                 )
-            ]
+            ],
+            [
+                InlineKeyboardButton(
+                    "❌ CANCEL GAME",
+                    callback_data="cancel_game"
+                )
+            ],
         ]
 
         await query.edit_message_text(
@@ -206,6 +223,49 @@ async def join_game(update: Update, context: ContextTypes.DEFAULT_TYPE):
             reply_markup=InlineKeyboardMarkup(keyboard),
             parse_mode="Markdown",
         )
+
+
+# =========================
+# CANCEL GAME
+# =========================
+
+async def cancel_game(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    query = update.callback_query
+    await query.answer()
+
+    chat_id = query.message.chat_id
+    user_id = query.from_user.id
+
+    if chat_id not in games:
+        await query.edit_message_text(
+            "❌ There is no active game."
+        )
+        return
+
+    game = games[chat_id]
+
+    # Only creator can cancel
+    if user_id != game["creator_id"]:
+        await query.answer(
+            "❌ Only the game creator can cancel the game!",
+            show_alert=True
+        )
+        return
+
+    if game["started"]:
+        await query.answer(
+            "❌ Game has already started!",
+            show_alert=True
+        )
+        return
+
+    del games[chat_id]
+
+    await query.edit_message_text(
+        "❌ *GAME CANCELLED!*\n\n"
+        "The game lobby has been cancelled by the creator.",
+        parse_mode="Markdown",
+    )
 
 
 # =========================
@@ -226,7 +286,6 @@ async def assign_roles(chat_id, context):
         "🕵️ Chor",
     ]
 
-    # Remaining players are Janta
     for i, player in enumerate(players):
         if i < 5:
             role = role_names[i]
@@ -270,7 +329,7 @@ async def assign_roles(chat_id, context):
 
         stats[player["id"]][role_key] += 1
 
-        # Try sending DM
+        # Send role privately
         try:
             await context.bot.send_message(
                 chat_id=player["id"],
@@ -282,10 +341,8 @@ async def assign_roles(chat_id, context):
                 parse_mode="Markdown",
             )
         except Exception:
-            # User hasn't started the bot.
             pass
 
-    # Group announcement
     await announce_roles(chat_id, context)
 
 
@@ -311,7 +368,7 @@ async def announce_roles(chat_id, context):
         f"👑 Raja: *{raja['name']}*\n"
         f"👮 Police: *{police['name']}*\n\n"
         "🤫 Other roles are SECRET.\n\n"
-        "👮 *Police, find the Chor!*\n"
+        "👮 *Police, find the Chor!*\n\n"
         "Use:\n"
         "`/chor NUMBER`\n\n"
         "Example: `/chor 3`"
@@ -323,7 +380,6 @@ async def announce_roles(chat_id, context):
         parse_mode="Markdown",
     )
 
-    # Show numbered players
     player_text = "🔢 *POLICE TARGET LIST*\n\n"
 
     for i, player in enumerate(game["players"], 1):
@@ -398,7 +454,6 @@ async def chor(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     selected_player = game["players"][number - 1]
 
-    # Police cannot choose himself
     if selected_player["id"] == game["police"]:
         await update.message.reply_text(
             "😂 Bro, you are Police yourself!\n"
@@ -441,8 +496,9 @@ async def correct_guess(chat_id, selected_player, context):
         chat_id=chat_id,
         text=(
             "🎯 *POLICE CAUGHT THE CHOR!*\n\n"
-            f"👮 Police: {get_name(game, police_id)}\n"
-            f"🕵️ Chor: {selected_player['name']}\n\n"
+            f"👮 Police: *{get_name(game, police_id)}*\n"
+            f"🕵️ Chor: *{selected_player['name']}*\n"
+            f"🆔 Chor ID: `{chor_id}`\n\n"
             "🤣 *TU KATTU CHOR HAI!* 🤣\n\n"
             "👮 Police gets +2000 points.\n"
             "🕵️ Chor gets 0 points."
@@ -472,9 +528,11 @@ async def wrong_guess(chat_id, selected_player, context):
         chat_id=chat_id,
         text=(
             "❌ *POLICE GUESSED WRONG!*\n\n"
-            f"👮 Police chose: {selected_player['name']}\n\n"
-            "🤣🤣 *KATTU CHORI HO GAYI!* 🤣🤣\n\n"
-            f"🕵️ Actual Chor: {get_name(game, chor_id)}\n"
+            f"👮 Police chose: *{selected_player['name']}*\n\n"
+            "🤣 *Abe Police ID nikamma nithalla, "
+            "police ke naam pe dhabba!* 🤣\n\n"
+            f"🕵️ Actual Chor: *{get_name(game, chor_id)}*\n"
+            f"🆔 Chor ID: `{chor_id}`\n\n"
             "🕵️ Chor gets +2000 points!"
         ),
         parse_mode="Markdown",
@@ -503,14 +561,18 @@ async def reveal_all(chat_id, context):
 
     for i, player in enumerate(game["players"], 1):
         role = game["roles"][player["id"]]
+
         text += (
             f"{i}. {player['name']}\n"
             f"   {role}\n"
         )
 
-        # Base points
-        if role in points:
-            stats[player["id"]]["points"] += points[role]
+        # Award base role points only once
+        if not game["scores_awarded"]:
+            if role in points:
+                stats[player["id"]]["points"] += points[role]
+
+    game["scores_awarded"] = True
 
     text += "\n💰 *SCORES UPDATED!*"
 
@@ -593,7 +655,15 @@ def main():
         )
     )
 
+    app.add_handler(
+        CallbackQueryHandler(
+            cancel_game,
+            pattern=r"^cancel_game$"
+        )
+    )
+
     print("🤖 RRPC Bot started...")
+
     app.run_polling()
 
 
